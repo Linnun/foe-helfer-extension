@@ -78,7 +78,8 @@ let Productions = {
 	Rating: {
 		Data:null,
 		Types:null,
-		load: (overwrite=null) => {
+
+		load: (overwrite = null) => {
 			Productions.Rating.Data = Object.assign({
 				'strategy_points': {order:1,perTile:5,active:true},
 				'money': {order:2,perTile:null,active:false},
@@ -113,16 +114,6 @@ let Productions = {
 			}, overwrite || JSON.parse(localStorage.getItem('Productions.Rating.Data')||"{}"))
 			Productions.Rating.Types = Object.keys(Productions.Rating.Data).sort((a,b)=>Productions.Rating.Data[a].order-Productions.Rating.Data[b].order)
 			
-			
-			//conversion of old data - remove at some point------------------------------------
-			if (localStorage.getItem('ProductionRatingEnableds2')) {
-				let Rating = JSON.parse(localStorage.getItem('ProductionRatingEnableds2')||"{}")
-				for (let [type,active] of Object.entries(Rating)) {
-					if (Productions.Rating.Data[type]) Productions.Rating.Data[type].active = active
-				}
-				localStorage.removeItem('ProductionRatingEnableds2')
-				Productions.Rating.save()
-			}
 			if (localStorage.getItem('ProductionRatingProdPerTiles')) {
 				let RatingProdPerTiles = Object.assign({},JSON.parse(localStorage.getItem('ProductionRatingProdPerTiles')||"{}"))
 				for (let [type,perTile] of Object.entries(RatingProdPerTiles)) {
@@ -133,9 +124,11 @@ let Productions = {
 			}
 			//------------------------------------------------------------------------------
 		},
+
 		save:() => {
 			localStorage.setItem('Productions.Rating.Data', JSON.stringify(Productions.Rating.Data))
-		}		
+			// hier
+		}
 		
 	},
 
@@ -1507,15 +1500,12 @@ let Productions = {
 
 
 	ShowRating: (external = false, eraName = null) => {
-		if (!Productions.Rating.Data) Productions.Rating.load()
-		if (ActiveMap == 'OtherPlayer' && !external) return
-		let era = (eraName == null) ? CurrentEra : eraName
+		if (!Productions.Rating.Data) Productions.Rating.load();
+		if (ActiveMap == 'OtherPlayer' && !external) return;
+		let era = (eraName == null) ? CurrentEra : eraName;
 		
 		if ($('#ProductionsRating').length === 0) {
 			
-			Productions.BuildingsAll = Object.values(CityMap.createNewCityMapEntities())
-			Productions.setChainsAndSets(Productions.BuildingsAll)
-
 			HTML.Box({
 				id: 'ProductionsRating',
 				title: i18n('Boxes.ProductionsRating.Title'),
@@ -1533,23 +1523,27 @@ let Productions = {
 			});
 			$('#ProductionsRating').on('click', '.reset-button', function () {
 				if (window.confirm(i18n('Boxes.ProductionsRating.ConfirmReset'))) {
+					localStorage.removeItem('Productions.Rating.Data');
 					Productions.Rating.load();
 				    Productions.Rating.save();
 				    Productions.CalcRatingBody();
 				}
 			});
+			Productions.CalcRatingBody(era);
 
 		} else {
 			HTML.CloseOpenBox('ProductionsRating');
 		}
 
-		Productions.CalcRatingBody(era);
 	},
 
-	//AdditionalBuildings:[],
 	AdditionalSpecialBuildings:null,
 
 	CalcRatingBody: (era = '') => {
+		Productions.BuildingsAll = Object.values(CityMap.createNewCityMapEntities())
+		Productions.setChainsAndSets(Productions.BuildingsAll)
+		
+
 		// grab special buildings
 		if (!Productions.AdditionalSpecialBuildings) {
 			let spB = Object.values(MainParser.CityEntities).filter(x=> (x.is_special && !["O_","U_","V_","H_","Y_"].includes(x.id.substring(0,2))) || x.id.substring(0,11)=="W_MultiAge_")
@@ -1597,19 +1591,7 @@ let Productions = {
 			let uniqueBuildings = []
 			let buildingSizes = []
 
-			// get buildings from inventory
-			/*for(let InventoryItem of Object.values(MainParser.Inventory)){
-				let id = InventoryItem?.item?.cityEntityId;
-				
-				if(!id || id.slice(0, 2) !== 'W_') continue; // if starts not with "W_", continue
-
-				let metaData = MainParser.CityEntities[InventoryItem.item.cityEntityId];
-				let building = CityMap.createNewCityMapEntity(metaData, Technologies.InnoEraNames[InventoryItem.item.level]||CurrentEra);
-				building.isInInventory = true;
-				Productions.BuildingsAll.push(building);
-				buildingCount[InventoryItem.item.cityEntityId+"I"] = InventoryItem.inStock;
-			}*/
-			let InventoryBuildings = Kits.BuildingsFromInventory()
+			let InventoryBuildings = Productions.InventoryBuildings = Kits.BuildingsFromInventory()
 
 			for (let [id,data] of Object.entries(InventoryBuildings)){
 				
@@ -1650,7 +1632,7 @@ let Productions = {
 				if (buildingSizes.find(x => x == buildingSize) == undefined)
 					buildingSizes.push(buildingSize)
 			}
-
+			
 			buildingSizes.sort((a,b)=>{
 				if (a < b) return -1
 				if (a > b) return 1
@@ -1757,7 +1739,7 @@ let Productions = {
 				h.push('</td><td class="text-right">')
 				// show amount in inventory if there are buildings
 				if (buildingCount[building.entityId+"I"] !== undefined && !building.isInInventory)
-					h.push('<span data-original-title="'+i18n('Boxes.ProductionsRating.InventoryTooltip')+', '+buildingCount[building.entityId+"I"]+'x"><img class="game-cursor" src="' + extUrl + 'js/web/x_img/inventory.png" /></span> ')
+					h.push('<span  data-callback_tt="Kits.InventoryTooltip" data-id="'+building.entityId+'" class="helperTT"><img class="game-cursor" src="' + extUrl + 'js/web/x_img/inventory.png" /></span> ')
 				
 				// show amount in city if > 1
 				if (buildingCount[building.entityId+"C"] && buildingCount[building.entityId+"C"] > 1 && !MainParser.Allies.buildingList?.[building.id]) 
@@ -1767,7 +1749,7 @@ let Productions = {
 				if (!building.highlight && !building.isInInventory) 
 					h.push('<span class="show-all" data-name="'+building.name+'"><img class="game-cursor" src="' + extUrl + 'css/images/hud/open-eye.png"></span>')
 				else if (building.isInInventory) {
-					h.push('<span data-original-title="'+i18n('Boxes.ProductionsRating.InventoryTooltip')+'">'+buildingCount[building.entityId+"I"]+'x <img class="game-cursor" src="' + extUrl + 'js/web/x_img/inventory.png" /></span>')
+					h.push('<span data-callback_tt="Kits.InventoryTooltip" data-id="'+building.entityId+'" class="helperTT">'+buildingCount[building.entityId+"I"]+'x <img class="game-cursor" src="' + extUrl + 'js/web/x_img/inventory.png" /></span>')
 				}
 				h.push('</td>')
 
